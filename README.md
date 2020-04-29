@@ -1,4 +1,4 @@
-### :running: Tarang API
+### :musical_score: Tarang API
 
 > :zap: API for tarang app
 
@@ -11,7 +11,7 @@
 
 ```bash
 
-git clone git@github.com:kiranlm/tarang.git
+git clone git@github.com:kiranlm/tarang-api.git
 
 ```
 
@@ -25,7 +25,7 @@ source activate tarang
 
 ```
 
-##### :computer: Install dependencies
+#### :computer: Install dependencies
 
 ```python
 
@@ -33,7 +33,7 @@ pip install pymongo flask
 
 ```
 
-##### :beers: Start
+#### :beers: Start
 
 ```bash
 
