@@ -123,7 +123,7 @@ def update_user(user_id):
     else:
         # Bad request as the resource is not available to update
         # Add message for debugging purpose
-        return make_response('Error occured', 401, {'WWW.Authentication': 'Basic realm: "unknown error"'})
+        return jsonify({'message': 'no updates made'})
 
 
 @app.errorhandler(404)
