@@ -37,9 +37,9 @@ def token_required(f):
         except:
             return jsonify({'message': 'token is invalid'})
 
-
-            return f(current_user, *args, **kwargs)
+        return f(*args, **kwargs)
     return decorator
+
 
 @app.route("/")
 def get_initial_response():
@@ -55,7 +55,7 @@ def get_initial_response():
     # Returning the object
     return resp
 
-@app.route('/api/v1/register', methods=['GET', 'POST'])
+@app.route('/api/v1/register', methods=['POST'])
 def signup_user():
     data = request.get_json()
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
@@ -71,7 +71,7 @@ def signup_user():
     return jsonify({'message': 'registered successfully'})
 
 
-@app.route('/api/v1/login', methods=['GET', 'POST'])
+@app.route('/api/v1/login', methods=['POST'])
 def login_user():
     auth = request.authorization
 
@@ -108,22 +108,22 @@ def get_all_users():
 
     return jsonify({'users': result})
 
-@app.route("/api/v1/user/<user_id>", methods=['GET'])
+@app.route("/api/v1/user/<user_id>", methods=['POST'])
 @token_required
 def update_user(user_id):
     data = request.get_json()
-    print(user_id)
     # Updating the user
-    records_updated = profile.update_one({"public_d": user_id}, data)
-
+    records_updated = collection.update_one(
+        {"public_d": user_id}, {'$set': data}, upsert=False)
+    print(records_updated.modified_count)
     # Check if resource is updated
     if records_updated.modified_count > 0:
-        # Prepare the response as resource is updated successfully
-        return "", 200
+    #     # Prepare the response as resource is updated successfully
+        return jsonify({'message': 'updated successfully'})
     else:
         # Bad request as the resource is not available to update
         # Add message for debugging purpose
-        return "", 404
+        return make_response('Error occured', 401, {'WWW.Authentication': 'Basic realm: "unknown error"'})
 
 
 @app.errorhandler(404)
