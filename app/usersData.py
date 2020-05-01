@@ -1,156 +1,129 @@
-"""This module will serve the api request."""
-
-from config import client
+from flask import request, jsonify, make_response
 from app import app
-from bson.json_util import dumps
-from flask import request, jsonify
+from config import client, SECRET_KEY
+import uuid
+import jwt
+import datetime
+from functools import wraps
+from flask_bcrypt import Bcrypt
 import json
-import ast
-from importlib.machinery import SourceFileLoader
 
 
-# Import the helpers module
-helper_module = SourceFileLoader('*', './app/helpers.py').load_module()
+bcrypt = Bcrypt()
 
 # Select the database
-db = client.restfulapi
-# Select the collection
+db = client.tarang
+# Select the users collection
 collection = db.users
+# Select the profile collection
+profile = db.userProfile
+
+def token_required(f):
+    @wraps(f)
+    def decorator(*args, **kwargs):
+
+        token = None
+        auth_header = request.headers.get('Authorization')
+
+        if auth_header:
+            token = auth_header.split(" ")[1]
+
+        if not token:
+            return jsonify({'message': 'a valid token is missing'})
+
+        try:
+            data = jwt.decode(token, SECRET_KEY)
+            current_user = collection.find({'public_id': data['public_id']})
+        except:
+            return jsonify({'message': 'token is invalid'})
+
+
+            return f(current_user, *args, **kwargs)
+    return decorator
 
 @app.route("/")
 def get_initial_response():
-    """Welcome message for the API."""
+    """Welcome message"""
     # Message to the user
     message = {
         'apiVersion': 'v1.0',
         'status': '200',
-        'message': 'Welcome to the Flask API'
+        'message': 'Welcome to the Tarang API v1.0'
     }
     # Making the message looks good
     resp = jsonify(message)
     # Returning the object
     return resp
 
+@app.route('/api/v1/register', methods=['GET', 'POST'])
+def signup_user():
+    data = request.get_json()
+    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
 
-@app.route("/api/v1/users", methods=['POST'])
-def create_user():
-    """
-       Function to create new users.
-       """
-    try:
-        # Create new users
-        try:
-            body = ast.literal_eval(json.dumps(request.get_json()))
-        except:
-            # Bad request as request body is not available
-            # Add message for debugging purpose
-            return "", 400
+    new_user = {}
+    new_user['public_id'] = str(uuid.uuid4())
+    new_user['username'] = data['username']
+    new_user['email'] = data['email']
+    new_user['password'] = hashed_password
+    new_user['role'] = 1
+    record_created = collection.insert(new_user)
 
-        record_created = collection.insert(body)
-
-        # Prepare the response
-        if isinstance(record_created, list):
-            # Return list of Id of the newly created item
-            return jsonify([str(v) for v in record_created]), 201
-        else:
-            # Return Id of the newly created item
-            return jsonify(str(record_created)), 201
-    except:
-        # Error while trying to create the resource
-        # Add message for debugging purpose
-        return "", 500
+    return jsonify({'message': 'registered successfully'})
 
 
-@app.route("/api/v1/users", methods=['GET'])
-def fetch_users():
-    """
-       Function to fetch the users.
-       """
-    try:
-        # Call the function to get the query params
-        query_params = helper_module.parse_query_params(request.query_string)
-        # Check if dictionary is not empty
-        if query_params:
+@app.route('/api/v1/login', methods=['GET', 'POST'])
+def login_user():
+    auth = request.authorization
 
-            # Try to convert the value to int
-            query = {k: int(v) if isinstance(v, str) and v.isdigit() else v for k, v in query_params.items()}
+    if not auth or not auth.username or not auth.password:
+        return make_response('could not verify', 401, {'WWW.Authentication': 'Basic realm: "login required"'})
 
-            # Fetch all the record(s)
-            records_fetched = collection.find(query)
+    user = collection.find_one({'username': auth.username})
+    print(user['password'])
 
-            # Check if the records are found
-            if records_fetched.count() > 0:
-                # Prepare the response
-                return dumps(records_fetched)
-            else:
-                # No records are found
-                return "", 404
+    if bcrypt.check_password_hash(user['password'], auth.password):
+        token = jwt.encode(
+            {'public_id': user['public_id'], 'exp': datetime.datetime.utcnow() +
+             datetime.timedelta(minutes=30)},
+            SECRET_KEY)
+        return jsonify({'token': token.decode('UTF-8')})
 
-        # If dictionary is empty
-        else:
-            # Return all the records as query string parameters are not available
-            if collection.find().count() > 0:
-                # Prepare response if the users are found
-                return dumps(collection.find())
-            else:
-                # Return empty array if no users are found
-                return jsonify([])
-    except:
-        # Error while trying to fetch the resource
-        # Add message for debugging purpose
-        return "", 500
+    return make_response('could not verify', 401, {'WWW.Authentication': 'Basic realm: "login required"'})
 
 
-@app.route("/api/v1/users/<user_id>", methods=['POST'])
+@app.route('/api/v1/user', methods=['GET'])
+def get_all_users():
+    users = collection.find()
+
+    result = []
+
+    for user in users:
+        user_data = {}
+        user_data['public_id'] = user['public_id']
+        user_data['username'] = user['username']
+        user_data['email'] = user['email']
+        user_data['role'] = user['role']
+
+        result.append(user_data)
+
+    return jsonify({'users': result})
+
+@app.route("/api/v1/user/<user_id>", methods=['GET'])
+@token_required
 def update_user(user_id):
-    """
-       Function to update the user.
-       """
-    try:
-        # Get the value which needs to be updated
-        try:
-            body = ast.literal_eval(json.dumps(request.get_json()))
-        except:
-            # Bad request as the request body is not available
-            # Add message for debugging purpose
-            return "", 400
+    data = request.get_json()
+    print(user_id)
+    # Updating the user
+    records_updated = profile.update_one({"public_d": user_id}, data)
 
-        # Updating the user
-        records_updated = collection.update_one({"id": int(user_id)}, body)
-
-        # Check if resource is updated
-        if records_updated.modified_count > 0:
-            # Prepare the response as resource is updated successfully
-            return "", 200
-        else:
-            # Bad request as the resource is not available to update
-            # Add message for debugging purpose
-            return "", 404
-    except:
-        # Error while trying to update the resource
+    # Check if resource is updated
+    if records_updated.modified_count > 0:
+        # Prepare the response as resource is updated successfully
+        return "", 200
+    else:
+        # Bad request as the resource is not available to update
         # Add message for debugging purpose
-        return "", 500
-
-
-@app.route("/api/v1/users/<user_id>", methods=['DELETE'])
-def remove_user(user_id):
-    """
-       Function to remove the user.
-       """
-    try:
-        # Delete the user
-        delete_user = collection.delete_one({"id": int(user_id)})
-
-        if delete_user.deleted_count > 0 :
-            # Prepare the response
-            return "", 204
-        else:
-            # Resource Not found
-            return "", 404
-    except:
-        # Error while trying to delete the resource
-        # Add message for debugging purpose
-        return "", 500
+        return "", 404
 
 
 @app.errorhandler(404)

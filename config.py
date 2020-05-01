@@ -2,6 +2,7 @@
 
 from pymongo import MongoClient
 
-DATABASE = MongoClient()['athletedb'] # DB_NAME
+DATABASE = MongoClient()['tarangdb']  # DB_NAME
 DEBUG = True
+SECRET_KEY = 'lm-secret'
 client = MongoClient('localhost', 27017)
